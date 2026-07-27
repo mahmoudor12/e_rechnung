@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scenarios xmlns="http://www.kosit.org/schema/validator-configuration/1.0"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://www.kosit.org/schema/validator-configuration/1.0
+           https://raw.githubusercontent.com/itplr-kosit/validator-configuration/master/src/main/resources/schema/validator-configuration.xsd">
+
+    <name>XRechnung 3.0.1 Konfiguration</name>
+    <author>Dein Name / Deine Firma</author>
+    <date>2026-01-01</date>
+
+    <!-- 1. Szenario für UBL Invoice & CreditNote -->
+    <scenario name="XRechnung 3.0.1 (UBL)" id="xrechnung-ubl-3.0.1">
+        <match>
+            /*[
+            (local-name()='Invoice' or local-name()='CreditNote')
+            and
+            (namespace-uri()='urn:oasis:names:specification:ubl:schema:xsd:Invoice-2'
+            or
+            namespace-uri()='urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2')
+            ]
+        </match>
+
+        <validation>
+            <!-- XSD Schema-Prüfung -->
+            <resource>
+                <location>rules/ubl/maindoc/UBL-Invoice-2.1.xsd</location>
+            </resource>
+
+            <!-- Schematron-Prüfung -->
+            <schematron location="rules/ubl/xrechnung-ubl-3.0.1.sch"/>
+        </validation>
+    </scenario>
+
+    <!-- 2. Szenario für CII (Cross Industry Invoice) -->
+    <scenario name="XRechnung 3.0.1 (CII)" id="xrechnung-cii-3.0.1">
+        <match>
+            /*[
+            local-name()='CrossIndustryInvoice'
+            and
+            namespace-uri()='urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100'
+            ]
+        </match>
+
+        <validation>
+            <resource>
+                <location>rules/cii/data/standard/CrossIndustryInvoice_100pD16B.xsd</location>
+            </resource>
+
+            <schematron location="rules/cii/xrechnung-cii-3.0.1.sch"/>
+        </validation>
+    </scenario>
+
+</scenarios>

@@ -1,0 +1,82 @@
+package com.example.e_rechnung.Erechnung.RestController;
+
+import com.example.e_rechnung.Erechnung.dto.response.ValidationReport;
+import com.example.e_rechnung.Erechnung.service.transmission.AsyncInvoiceProcessor;
+import com.example.e_rechnung.Erechnung.service.validation.KositValidationService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * REST-Controller für den Empfang von eingehenden Rechnungen (Inbound).
+ * Empfängt Rechnungen über Peppol-Webhooks oder andere Quellen.
+ */
+@RestController
+@RequestMapping("/api/inbound")
+@RequiredArgsConstructor
+@Slf4j
+public class InboundInvoiceController {
+
+    private final KositValidationService kositValidationService;
+    private final AsyncInvoiceProcessor asyncInvoiceProcessor;
+
+    /**
+     * Haupt-Endpunkt zum Empfangen von Rechnungen aus dem Peppol-Netzwerk.
+     * Der Peppol-Provider sendet den XML-Inhalt der Rechnung an diesen Endpunkt.
+     * Die eigentliche Verarbeitung (Speicherung, Archivierung) erfolgt asynchron,
+     * um Timeouts zu vermeiden.
+     *
+     * @param xmlContent Der XML-Inhalt der Rechnung (XRechnung oder ZUGFeRD)
+     * @return 202 ACCEPTED mit einer Callback-ID für den Statusabruf
+     */
+    @PostMapping(value = "/peppol", consumes = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<Map<String, String>> receivePeppolInvoice(@RequestBody byte[] xmlContent) {
+        log.info("📥 Eingehende Rechnung über Peppol-Webhook empfangen. Größe: {} Bytes", xmlContent.length);
+
+        // 1. KoSIT-Validierung (vollständige Prüfung: XSD + Schematron + EN 16931)
+        KositValidationService.ValidationResult result = kositValidationService.validate(xmlContent);
+
+        if (!result.isValid()) {
+            List<String> errors = result.getErrors();
+            log.error("❌ KoSIT-Validierung fehlgeschlagen: {}", errors);
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Validierung fehlgeschlagen",
+                    "details", String.join("; ", errors)
+            ));
+        }
+
+        // 2. Generiere eine eindeutige ID für den asynchronen Verarbeitungsauftrag
+        String callbackId = UUID.randomUUID().toString();
+
+        // 3. Starte die asynchrone Verarbeitung (Speicherung + Archivierung)
+        try {
+            asyncInvoiceProcessor.processInvoiceAsync(xmlContent, callbackId);
+            log.info("✅ Rechnung zur asynchronen Verarbeitung angemeldet. CallbackId: {}", callbackId);
+            return ResponseEntity.accepted().body(Map.of(
+                    "status", "ACCEPTED",
+                    "callbackId", callbackId,
+                    "message", "Rechnung wurde zur Verarbeitung angenommen. Status kann später abgerufen werden."
+            ));
+        } catch (Exception e) {
+            log.error("🔥 Fehler beim Starten der asynchronen Verarbeitung: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Interner Fehler beim Starten der Verarbeitung: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Zusätzlicher Endpunkt zum Empfangen von Rechnungen im Multipart-Format (z.B. für Testzwecke).
+     * Leitet die Anfrage an den Haupt-Endpunkt weiter.
+     */
+    @PostMapping(value = "/peppol/multipart", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, String>> receivePeppolInvoiceMultipart(@RequestParam("file") byte[] xmlContent) {
+        return receivePeppolInvoice(xmlContent);
+    }
+}
