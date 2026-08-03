@@ -112,11 +112,7 @@
 			<artifactId>javax.inject</artifactId>
 			<version>1</version>
 		</dependency>
-		<dependency>
-			<groupId>org.mustangproject</groupId>
-			<artifactId>core</artifactId>
-			<version>2.24.0</version>
-		</dependency>
+
 	</dependencies>
 
 	<build>

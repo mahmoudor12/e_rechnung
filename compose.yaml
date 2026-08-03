@@ -2,7 +2,7 @@ services:
   postgres:
     image: 'postgres:latest'
     environment:
-      - 'POSTGRES_DB=taskmanager'
+      - 'POSTGRES_DB=e_rechnung'
       - 'POSTGRES_PASSWORD=neues_passwort'
       - 'POSTGRES_USER=postgres'
     ports:
