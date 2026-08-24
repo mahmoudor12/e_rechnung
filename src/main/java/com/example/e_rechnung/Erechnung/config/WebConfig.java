@@ -17,7 +17,11 @@ public class WebConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         System.out.println("🔥 CORS wird mit allowedOriginPatterns konfiguriert!");
         registry.addMapping("/**")
-                .allowedOriginPatterns("https://e-rechnung-frontend.onrender.com")
+                .allowedOriginPatterns(
+                        "http://localhost:3000",
+                        "http://localhost:3001",
+                        "https://e-rechnung-frontend.onrender.com"  // 🔥 Frontend-URL
+                )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                 .allowedHeaders("*")
                 .allowCredentials(true)
