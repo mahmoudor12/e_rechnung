@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: e-rechnung
+    runtime: java
+    buildCommand: ./mvnw clean package -DskipTests
+    startCommand: java -jar target/*.jar
+    envVars:
+      - key: SPRING_DATASOURCE_URL
+        value: jdbc:postgresql://dpg-da66l1ek1f9s7397keqg-a/e_rechnung
+      - key: SPRING_DATASOURCE_USERNAME
+        value: e_rechnung_user
+      - key: SPRING_DATASOURCE_PASSWORD
+        value: kCZTcBApv0BH36WppyTYgoWF2haha2Lc
+      - key: SPRING_JPA_HIBERNATE_DDL_AUTO
+        value: update
