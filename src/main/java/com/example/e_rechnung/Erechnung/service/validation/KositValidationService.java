@@ -256,5 +256,7 @@ public class KositValidationService {
         public boolean isValid() {
             return isValid && (errors == null || errors.isEmpty());
         }
+
     }
+
 }

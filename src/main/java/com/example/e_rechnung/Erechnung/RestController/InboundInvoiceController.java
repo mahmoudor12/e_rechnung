@@ -21,7 +21,7 @@ import java.util.UUID;
 @RequestMapping("/api/inbound")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*")  // CORS – bei Bedarf anpassen
+
 public class InboundInvoiceController {
 
     private final KositValidationService kositValidationService;

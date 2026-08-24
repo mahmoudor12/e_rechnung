@@ -7,6 +7,9 @@ import lombok.Getter;
 import lombok.Setter;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
 @Setter
 @Getter
 @Entity
@@ -25,6 +28,7 @@ public class InvoiceEntity {
 
     @Column(columnDefinition = "TEXT")
     private String xmlContent;
-
+    @ElementCollection
+    private List<String> errors = new ArrayList<>();
     private LocalDateTime createdAt;
 }
