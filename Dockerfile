@@ -1,13 +1,31 @@
-# Basis-Image mit Eclipse Temurin (OpenJDK 21)
-FROM eclipse-temurin:21-jre-alpine
+# ========================================
+# STAGE 1: Build mit Maven
+# ========================================
+FROM maven:3.9-eclipse-temurin-21 AS build
 
-# Arbeitsverzeichnis im Container
+# Arbeitsverzeichnis
 WORKDIR /app
 
-# Kopiere die JAR-Datei aus dem lokalen Build
-COPY target/*.jar app.jar
+# 1. Nur pom.xml kopieren (für Dependency-Caching)
+COPY pom.xml .
+RUN mvn dependency:go-offline
 
-# Port freigeben (Spring Boot Standard)
+# 2. Quellcode kopieren und bauen
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+# ========================================
+# STAGE 2: Runtime-Image (klein)
+# ========================================
+FROM eclipse-temurin:21-jre-alpine
+
+# Arbeitsverzeichnis
+WORKDIR /app
+
+# JAR aus der Build-Stufe kopieren
+COPY --from=build /app/target/*.jar app.jar
+
+# Port freigeben
 EXPOSE 8081
 
 # Startbefehl
