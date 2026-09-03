@@ -39,8 +39,8 @@ public class DownloadController {
      */
 
     @GetMapping("/status/{invoiceNumber}")
-    public ResponseEntity<InvoiceEntity> getStatus(@PathVariable String invoiceNumber) {
-        InvoiceEntity entity = invoiceRepository.findByInvoiceNumber(invoiceNumber)
+    public ResponseEntity<InvoiceEntity> getStatus(@PathVariable String invoiceNumber,String tenantId) {
+        InvoiceEntity entity = invoiceRepository.findByInvoiceNumber(invoiceNumber,tenantId)
                 .orElseThrow(() -> new RuntimeException("Invoice not found"));
         return ResponseEntity.ok(entity);
     }

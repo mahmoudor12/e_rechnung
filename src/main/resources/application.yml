@@ -1,0 +1,6 @@
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://e-rechnung-frontend-6ob3khm26-mahmoudor12s-projects.vercel.app

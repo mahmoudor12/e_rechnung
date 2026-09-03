@@ -25,7 +25,8 @@ public class InvoiceEntity {
     private String sellerName;
     private String buyerName;
     private String status; // PENDING, SENT, FAILED
-
+    @Column(nullable = false)
+    private String tenantId;
     @Column(columnDefinition = "TEXT")
     private String xmlContent;
     @ElementCollection

@@ -24,7 +24,7 @@ public class HybridGeneratorService {
     private final GoBDComplianceChecker goBDComplianceChecker;
 
     @Transactional
-    public InvoiceResponse generateAndStore(CreateInvoiceRequest request) {
+    public InvoiceResponse generateAndStore(CreateInvoiceRequest request,String tenantId) {
         byte[] xml = xRechnungGeneratorService.generate(request);
         boolean auditOk = goBDComplianceChecker.isAuditProof(xml, LocalDateTime.now());
         if (!auditOk) {
@@ -40,6 +40,7 @@ public class HybridGeneratorService {
         entity.setStatus("GENERATED");
         entity.setXmlContent(new String(xml));
         entity.setCreatedAt(LocalDateTime.now());
+        entity.setTenantId(tenantId);
 
         invoiceRepository.save(entity);
 
@@ -47,7 +48,8 @@ public class HybridGeneratorService {
                 .invoiceNumber(entity.getInvoiceNumber())
                 .status("GENERATED")
                 .message("Invoice generated and stored")
-                .downloadUrl("/api/invoices/download/" + entity.getId())
+                .downloadUrl("/api/invoices/download/" +
+                        entity.getId())
                 .build();
     }
 }

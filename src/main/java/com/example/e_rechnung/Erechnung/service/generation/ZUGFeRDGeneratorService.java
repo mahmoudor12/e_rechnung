@@ -17,7 +17,7 @@ public class ZUGFeRDGeneratorService {
 
     public byte[] generateAndValidate(CreateInvoiceRequest request) {
         byte[] pdfWithXml = generatePdfWithXml(request);
-        // استخراج XML من PDF والتحقق منه - مبسط هنا
+        //
         boolean valid = schemaValidationService.validateXmlAgainstBytes(pdfWithXml);
         if (!valid) {
             throw new RuntimeException("Generated PDF fails schema validation");
