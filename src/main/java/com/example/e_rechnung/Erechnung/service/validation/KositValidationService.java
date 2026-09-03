@@ -3,7 +3,6 @@ package com.example.e_rechnung.Erechnung.service.validation;
 import de.kosit.validationtool.api.*;
 import de.kosit.validationtool.impl.DefaultCheck;
 import de.kosit.validationtool.impl.xml.ProcessorProvider;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -24,61 +23,76 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.stream.Stream;
 
+/**
+ * Service für die KoSIT-Validierung von XRechnung- und EN16931-konformen Rechnungen.
+ * Die Initialisierung erfolgt lazy beim ersten Aufruf, um den Speicherverbrauch beim Start zu reduzieren.
+ */
 @Service
 @Slf4j
 public class KositValidationService {
 
+    // Pfade der Ressourcen, die tatsächlich benötigt werden – reduziert die Kopierlast
+    private static final List<String> REQUIRED_RESOURCE_PATHS = List.of(
+            "kosit/scenarios.xml",
+            "kosit/resources/ubl/2.1/xsl/",
+            "kosit/resources/ubl/2.1/xsd/maindoc/UBL-Invoice-2.1.xsd",
+            "kosit/resources/ubl/2.1/xsd/maindoc/UBL-CreditNote-2.1.xsd",
+            "kosit/resources/xrechnung/3.0.2/xsl/",
+            "kosit/resources/xrechnung/3.0.2/xsd/",
+            "kosit/resources/xrechnung-report.xsl",
+            "kosit/resources/default-report.xsl",
+            "kosit/resources/cii/16b/xsl/",
+            "kosit/resources/cii/16b/xsd/"
+            // Weitere Pfade können bei Bedarf ergänzt werden
+    );
+
     private Check validator;
     private Path tempDir;
+    private volatile boolean initialized = false;
 
-    @PostConstruct
-    public void init() throws Exception {
-        log.info("🚀 Initializing KoSIT Validator...");
+    /**
+     * Stellt sicher, dass der Validator initialisiert ist (lazy).
+     * Wird vor jeder Validierung aufgerufen.
+     */
+    private synchronized void ensureInitialized() {
+        if (initialized) {
+            return;
+        }
+        log.info("🚀 Initializing KoSIT Validator (lazy)...");
         try {
-            // 1. مجلد مؤقت جديد
+            // 1. Temporäres Verzeichnis erstellen
             this.tempDir = Files.createTempDirectory("kosit-config");
             log.info("📁 Temporary config directory: {}", tempDir);
 
-            // 2. إنشاء المجلد kosit داخل المؤقت
+            // 2. Nur benötigte Ressourcen kopieren
             Path kositRoot = tempDir.resolve("kosit");
+            copyRequiredResources(kositRoot);
 
-            // 3. نسخ كل الملفات من classpath:kosit/ إلى المجلد المؤقت
-            copyClasspathDirectory("kosit", kositRoot);
-
-            // 4. التحقق من وجود scenarios.xml
+            // 3. scenarios.xml prüfen
             Path scenariosPath = kositRoot.resolve("scenarios.xml");
             if (!Files.exists(scenariosPath)) {
-                throw new IllegalStateException("scenarios.xml was not found at: " + scenariosPath.toAbsolutePath());
+                throw new IllegalStateException("scenarios.xml not found at: " + scenariosPath.toAbsolutePath());
             }
             log.info("📄 scenarios.xml found, size: {} bytes", Files.size(scenariosPath));
 
-            // 5. تحميل التهيئة وبناء المدقق
+            // 4. Validator bauen
             Configuration config = Configuration.load(scenariosPath.toUri()).build(ProcessorProvider.getProcessor());
             this.validator = new DefaultCheck(config);
+            initialized = true;
             log.info("✅ KoSIT Validator initialized successfully.");
-
         } catch (Exception e) {
             log.error("❌ Failed to initialize KoSIT Validator", e);
             throw new RuntimeException("KoSIT initialization failed", e);
         }
     }
 
-    @PreDestroy
-    public void cleanup() {
-        if (tempDir != null && Files.exists(tempDir)) {
-            try {
-                deleteDirectoryRecursively(tempDir);
-                log.info("🧹 Cleaned up temporary KoSIT directory: {}", tempDir);
-            } catch (IOException e) {
-                log.warn("⚠️ Could not fully clean up temp dir: {}", e.getMessage());
-            }
-        }
-    }
-
     /**
      * Validiert eine XML-Rechnung mit dem KoSIT-Validator.
+     * Die Initialisierung wird bei Bedarf gestartet.
      */
     public ValidationResult validate(byte[] xmlContent) {
+        ensureInitialized(); // ← hier wird erstmals initialisiert
+
         log.info("🔍 Validating invoice with KoSIT Validator...");
         Path tempFile = null;
         try {
@@ -107,83 +121,97 @@ public class KositValidationService {
                 try {
                     Files.deleteIfExists(tempFile);
                 } catch (IOException ignored) {
-                    // Ignorieren
+                    // ignore
                 }
             }
         }
     }
 
     /**
-     * Kopiert komplette Ordnerstrukturen aus dem Classpath ins Zielverzeichnis.
+     * Kopiert nur die für die Validierung benötigten Ressourcen aus dem Classpath.
+     * Spart Speicher und Zeit gegenüber dem vollständigen Kopieren aller 110 Dateien.
      */
-    private void copyClasspathDirectory(String sourceFolder, Path targetDir) throws IOException {
+    private void copyRequiredResources(Path targetRoot) throws IOException {
         ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-        Resource[] resources = resolver.getResources("classpath*:" + sourceFolder + "/**");
+        int copiedCount = 0;
 
-        log.info("📂 Found {} resources in classpath under '{}'", resources.length, sourceFolder);
-
-        int fileCount = 0;
-        for (Resource resource : resources) {
-            if (!resource.isReadable()) {
-                continue;
-            }
-
-            String urlString = resource.getURL().toString();
-            int rootIndex = urlString.indexOf(sourceFolder);
-            if (rootIndex == -1) {
-                continue;
-            }
-
-            String relativePath = urlString.substring(rootIndex + sourceFolder.length());
-            if (relativePath.isEmpty() || relativePath.endsWith("/")) {
-                continue;
-            }
-
-            if (relativePath.startsWith("/")) {
-                relativePath = relativePath.substring(1);
-            }
-
-            Path targetFile = targetDir.resolve(relativePath);
-            Files.createDirectories(targetFile.getParent());
-
-            try (InputStream is = resource.getInputStream()) {
-                Files.copy(is, targetFile, StandardCopyOption.REPLACE_EXISTING);
-                fileCount++;
-                // يمكن إلغاء التعليق لرؤية كل ملف
-                // log.debug("✅ Copied: {}", relativePath);
-            } catch (Exception e) {
-                log.warn("❌ Failed to copy {}: {}", relativePath, e.getMessage());
+        for (String pathPattern : REQUIRED_RESOURCE_PATHS) {
+            // Bei Ordnern müssen wir alle darunter liegenden Dateien kopieren
+            if (pathPattern.endsWith("/")) {
+                String folderPattern = pathPattern + "**/*";
+                Resource[] resources = resolver.getResources("classpath*:" + folderPattern);
+                for (Resource resource : resources) {
+                    if (!resource.isReadable() || resource.getFilename() == null) {
+                        continue;
+                    }
+                    String relativePath = extractRelativePath(resource, "kosit");
+                    if (relativePath == null) {
+                        continue;
+                    }
+                    Path targetFile = targetRoot.resolve(relativePath);
+                    Files.createDirectories(targetFile.getParent());
+                    try (InputStream is = resource.getInputStream()) {
+                        Files.copy(is, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                        copiedCount++;
+                    } catch (Exception e) {
+                        log.warn("❌ Failed to copy {}: {}", relativePath, e.getMessage());
+                    }
+                }
+            } else {
+                // Einzelne Datei
+                Resource resource = resolver.getResource("classpath*:" + pathPattern);
+                if (resource.exists() && resource.isReadable()) {
+                    String relativePath = extractRelativePath(resource, "kosit");
+                    if (relativePath != null) {
+                        Path targetFile = targetRoot.resolve(relativePath);
+                        Files.createDirectories(targetFile.getParent());
+                        try (InputStream is = resource.getInputStream()) {
+                            Files.copy(is, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                            copiedCount++;
+                        } catch (Exception e) {
+                            log.warn("❌ Failed to copy {}: {}", relativePath, e.getMessage());
+                        }
+                    }
+                }
             }
         }
 
-        log.info("✅ Successfully copied {} files from '{}' to temporary directory", fileCount, sourceFolder);
+        log.info("✅ Successfully copied {} required resources from classpath to temporary directory", copiedCount);
+    }
 
-        // تحقق إضافي: هل يوجد مجلد maindoc؟
-        Path maindocPath = targetDir.resolve("resources/ubl/2.1/xsd/maindoc");
-        if (Files.exists(maindocPath)) {
-            log.info("✅ maindoc directory exists at: {}", maindocPath);
-            try (Stream<Path> files = Files.list(maindocPath)) {
-                files.forEach(f -> log.info("  📄 {}", f.getFileName()));
+    /**
+     * Hilfsmethode zum Extrahieren des relativen Pfades aus einer Resource.
+     */
+    private String extractRelativePath(Resource resource, String rootFolder) {
+        try {
+            String url = resource.getURL().toString();
+            int idx = url.indexOf(rootFolder);
+            if (idx == -1) {
+                return null;
             }
-        } else {
-            log.warn("❌ maindoc directory NOT found at: {}", maindocPath);
+            String path = url.substring(idx + rootFolder.length());
+            if (path.startsWith("/")) {
+                path = path.substring(1);
+            }
+            return path;
+        } catch (IOException e) {
+            log.warn("Could not extract path for resource: {}", resource, e);
+            return null;
         }
     }
 
     /**
-     * Extrahiert Fehlermeldungen aus dem Validierungsbericht.
+     * Extrahiert Fehlermeldungen aus dem Validierungsreport.
      */
     private List<String> extractErrors(Result result) {
         List<String> errors = new ArrayList<>();
         Document report = result.getReportDocument();
-
         if (report == null) {
             return Collections.singletonList("No validation report generated");
         }
 
         try {
             XPath xPath = XPathFactory.newInstance().newXPath();
-
             xPath.setNamespaceContext(new NamespaceContext() {
                 @Override
                 public String getNamespaceURI(String prefix) {
@@ -200,7 +228,6 @@ public class KositValidationService {
             // Schematron-Fehler
             NodeList failedAsserts = (NodeList) xPath.evaluate(
                     "//svrl:failed-assert/svrl:text", report.getDocumentElement(), XPathConstants.NODESET);
-
             for (int i = 0; i < failedAsserts.getLength(); i++) {
                 String text = failedAsserts.item(i).getTextContent().trim();
                 if (!text.isEmpty()) {
@@ -208,7 +235,7 @@ public class KositValidationService {
                 }
             }
 
-            // XSD-Schema-Fehler
+            // XSD-Schema-Fehler (falls keine Schematron-Fehler)
             if (errors.isEmpty()) {
                 NodeList messages = (NodeList) xPath.evaluate(
                         "//rep:message", report.getDocumentElement(), XPathConstants.NODESET);
@@ -224,8 +251,19 @@ public class KositValidationService {
             log.warn("Could not parse validation report: {}", e.getMessage());
             errors.add("Unable to parse validation report: " + e.getMessage());
         }
-
         return errors;
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        if (tempDir != null && Files.exists(tempDir)) {
+            try {
+                deleteDirectoryRecursively(tempDir);
+                log.info("🧹 Cleaned up temporary KoSIT directory: {}", tempDir);
+            } catch (IOException e) {
+                log.warn("⚠️ Could not fully clean up temp dir: {}", e.getMessage());
+            }
+        }
     }
 
     private void deleteDirectoryRecursively(Path path) throws IOException {
@@ -235,7 +273,6 @@ public class KositValidationService {
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
-
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
                 Files.delete(dir);
@@ -248,15 +285,11 @@ public class KositValidationService {
      * Ergebnis der KoSIT-Validierung.
      */
     public record ValidationResult(boolean isValid, List<String> errors) {
-
         public List<String> getErrors() {
             return errors != null ? List.copyOf(errors) : List.of();
         }
-
         public boolean isValid() {
             return isValid && (errors == null || errors.isEmpty());
         }
-
     }
-
 }
